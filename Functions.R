@@ -65,6 +65,11 @@ BuildCorrC <- function(S, mu, bC, p = 0) {
   return(mat)
 }
 
+BuildCFromP <- function(S, Cd, C0, bC, P) {
+  
+  
+}
+
 BuildC <- function(S, MatType, Cd, C0, bC, p = 0) {
   
   if(MatType == "Random") {
@@ -75,8 +80,9 @@ BuildC <- function(S, MatType, Cd, C0, bC, p = 0) {
   } else if(MatType == "Symmetric") {
     
     C <- matrix(runif(S^2, C0 - bC, C0 + bC), S, S)
-    diag(C) <- Cd
     C <- 0.5 * (C + t(C))
+    diag(C) <- Cd
+    
     
   } else if(MatType == "ConstCirc") {
     
@@ -156,6 +162,8 @@ BuildP <- function(S, MatType) {
   } else if(MatType == "Upper Triangular") {
     P <- t(BuildLowerTriMat(S, mu = 0.5, bC = 0.5))
     P <- diag((1 / rowSums(P)), S, S) %*% P
+  } else if(MatType == "No Cross-Feeding") {
+    P <- matrix(0, S, S)
   }
   return(P)
 }
@@ -232,6 +240,18 @@ GetFeas <- function(Cd, pars) {
   return(feasibility)
 }
 
+StabB <- function(Cd, pars) {
+  eig <- with(pars, {
+    diag(C) <- Cd
+    Ctilde <- C
+    diag(Ctilde) <- diag(C) * (1 - diag(eps))
+    B <- - C + t(P) %*% Ctilde
+    Bprime <- B %*% diag(diag(eps) * n * Cd)
+    return(GetEig(B))
+  })
+  return(eig)
+}
+
 FindCds <- function(pars, maxCd_mult) {
   Cd <- 1
   max_val <- maxCd_mult * max(pars$C)
@@ -239,9 +259,11 @@ FindCds <- function(pars, maxCd_mult) {
   max_bound <- GetBound(max_val, pars)
   if(max_bound < 0) {
     bound <- uniroot(GetBound, interval = c(0, max_val), pars)$root
+    Bpred <- uniroot(StabB, interval = c(0, max_val), pars)$root
   } else {
     bound <- NA
-    print("Gershgorin bound always unstable")
+    Bpred <- NA
+    print("Gershgorin bound or B always unstable")
   }
   
   min_feas <- GetFeas(0, pars)
@@ -266,7 +288,7 @@ FindCds <- function(pars, maxCd_mult) {
     print("Never stable")
   }
   
-  Cds <- data.frame(EigCd = Cd, Bound = bound, Feasibility = feas, Cd = max(Cd, feas))
+  Cds <- data.frame(EigCd = Cd, Bound = bound, Bpred = Bpred, Feasibility = feas, Cd = max(Cd, feas))
   return(Cds)
 }
 
@@ -484,8 +506,8 @@ integrate_dyn <- function(inistate, pars, endtime, fn, timestep = 1){
 
 # Plotting
 
-GridM <- function(M, Title) {
-  hm.palette <- colorRampPalette(brewer.pal(9, 'Blues'), space='Lab')
+GridM <- function(M, Title, in_color) {
+  hm.palette <- colorRampPalette(brewer.pal(9, in_color), space='Lab')
   M.melted <- melt(t(M))
   gridM <- ggplot(M.melted, aes(x = Var1, y = dim(M)[1] - Var2, fill = value)) +
     geom_tile() +
